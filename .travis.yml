@@ -14,6 +14,8 @@ jobs:
     # Linux
     - env: TARGET=x86_64-unknown-linux-musl
     - env: TARGET=x86_64-unknown-linux-gnu
+    - env: TARGET=arm-unknown-linux-gnueabi
+    - env: TARGET=armv7-unknown-linux-gnueabihf
 
     # OSX
     - env: TARGET=x86_64-apple-darwin
