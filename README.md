@@ -1,12 +1,11 @@
 <h1 align="center">
 <img width="300px" src="assets/logo.png" />
 
-[![travis][s0]][l0] [![appveyor][s1]][l1] [![crates][s2]][l2] [![MIT][s3]][l3] [![Packaging status](https://repology.org/badge/tiny-repos/so.svg)](https://repology.org/project/so/versions)
-
+[![ci][s0]][l0] [![appveyor][s1]][l1] [![crates][s2]][l2] [![MIT][s3]][l3] [![Packaging status](https://repology.org/badge/tiny-repos/so.svg)](https://repology.org/project/so/versions)
 </h1>
 
-[s0]: https://travis-ci.org/samtay/so.svg?branch=master
-[l0]: https://travis-ci.org/samtay/so
+[s0]: https://github.com/samtay/so/actions/workflows/ci.yml/badge.svg
+[l0]: https://github.com/samtay/so/actions/workflows/ci.yml
 [s1]: https://ci.appveyor.com/api/projects/status/pu7e63f2sqq6x1iq/branch/master?svg=true
 [l1]: https://ci.appveyor.com/project/samtay/so/branch/master
 [s2]: https://img.shields.io/crates/v/so.svg
@@ -54,8 +53,8 @@ yay -S so-git
 You can install the package [so](https://cgit.freebsd.org/ports/tree/www/so) via
 ```
 pkg install so
-
 ```
+
 #### NetBSD
 You can install the package [so](https://pkgsrc.se/www/so) via
 ```
@@ -66,6 +65,11 @@ pkgin install so
 You can install the homebrew [formula](https://formulae.brew.sh/formula/so)
 ```
 brew install so
+```
+
+Alternatively, you can use [MacPorts](https://www.macports.org) to install [so](https://ports.macports.org/port/so/):
+```
+sudo port install so
 ```
 
 #### Windows
@@ -118,7 +122,7 @@ directories:
 - MacOS: `/Users/Alice/Library/Preferences/io.Sam-Tay.so`
 
 #### defaults
-The `config.yml` file let's you specify your CLI defaults. So if you dislike the
+The `config.yml` file lets you specify your CLI defaults. So if you dislike the
 lucky prompt, always search serverfault.com and unix.stackexchange.com, and
 want the [fastest search engine](#search-engines), you can set your config file like this:
 ```yaml
@@ -138,6 +142,20 @@ Run `so --help` to see your current defaults.
 In the same directory you'll find `colors.toml` which is self-documented. The
 default theme attempts to blend in with your default terminal theme, but you can
 change it as necessary. In particular, you may want to change the `highlight_text` if the current selection is difficult to read. There are some themes in the [themes](./themes) directory as well.
+
+#### system clipboard integration
+There's a very primitive integration in place to copy the contents of
+the currently focused question or answer to the system clipboard. This requires
+some command in your PATH that can accept stdin and pipe to the clipboard.
+On mac & windows, this will work out of the box with the default set to `pbcopy`
+& `clip` respectively. On Linux, I've made the assumption that `xclip` is likely
+the most popular, but if you use something else (e.g. `wl-copy` on wayland),
+you'll need to set the command directly:
+```yaml
+# config.yml
+---
+copy_cmd: copy --option-to-take-stdin
+```
 
 #### api keys
 If you want to use your own [StackExchange API

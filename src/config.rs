@@ -4,19 +4,23 @@ use std::fmt;
 use std::fs;
 use std::io::Write;
 use std::path::PathBuf;
+use std::process::Command;
+use std::process::Stdio;
 
 use crate::error::{Error, Result};
 use crate::utils;
 
-#[derive(Deserialize, Serialize, Debug, Clone, PartialEq)]
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
+#[derive(Default)]
 pub enum SearchEngine {
     DuckDuckGo,
+    #[default]
     Google,
     StackExchange,
 }
 
-#[derive(Deserialize, Serialize, Debug, Clone, PartialEq)]
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq)]
 #[serde(default)]
 pub struct Config {
     pub api_key: Option<String>,
@@ -24,6 +28,7 @@ pub struct Config {
     pub lucky: bool,
     pub sites: Vec<String>,
     pub search_engine: SearchEngine,
+    pub copy_cmd: Option<String>,
 }
 
 impl fmt::Display for SearchEngine {
@@ -33,13 +38,7 @@ impl fmt::Display for SearchEngine {
             SearchEngine::Google => "google",
             SearchEngine::StackExchange => "stackexchange",
         };
-        write!(f, "{}", s)
-    }
-}
-
-impl Default for SearchEngine {
-    fn default() -> Self {
-        SearchEngine::Google
+        write!(f, "{s}")
     }
 }
 
@@ -52,6 +51,16 @@ impl Default for Config {
             lucky: true,
             sites: vec![String::from("stackoverflow")],
             search_engine: SearchEngine::default(),
+            copy_cmd: Some(String::from(if cfg!(target_os = "macos") {
+                "pbcopy"
+            } else if cfg!(target_os = "windows") {
+                "clip"
+            } else if cfg!(target_os = "linux") {
+                "xclip -sel clip"
+            } else {
+                // this default makes no sense but w/e
+                "wl-copy"
+            })),
         }
     }
 }
@@ -61,7 +70,7 @@ impl Config {
     pub fn new() -> Result<Self> {
         let project = Self::project_dir()?;
         let dir = project.config_dir();
-        fs::create_dir_all(&dir)?;
+        fs::create_dir_all(dir)?;
         let filename = Self::config_file_path()?;
 
         match utils::open_file(&filename)? {
@@ -114,5 +123,13 @@ impl Config {
         let filename = Self::config_file_path()?;
         let file = utils::create_file(&filename)?;
         Ok(serde_yaml::to_writer(file, &self)?)
+    }
+
+    pub fn get_copy_cmd(&self) -> Option<Command> {
+        let copy_cmd_str = self.copy_cmd.as_ref()?;
+        let mut pieces = copy_cmd_str.split_whitespace();
+        let mut cmd = Command::new(pieces.next()?);
+        cmd.args(pieces).stdin(Stdio::piped());
+        Some(cmd)
     }
 }

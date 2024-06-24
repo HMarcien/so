@@ -10,7 +10,7 @@
 use cursive::theme::{Effect, PaletteColor, Style};
 use cursive::utils::markup::{StyledIndexedSpan, StyledString};
 use cursive::utils::span::{IndexedCow, IndexedSpan};
-use pulldown_cmark::{self, CowStr, Event, Options, Tag};
+use pulldown_cmark::{self, CowStr, Event, HeadingLevel, Options, Tag};
 
 pub type Markdown = StyledString;
 
@@ -79,16 +79,16 @@ fn parse_spans(input: &str) -> Vec<StyledIndexedSpan> {
 }
 
 /// Iterator that parse a markdown text and outputs styled spans.
-pub struct Parser<'a> {
+pub struct Parser<'a, 'b> {
     first: bool,
     item: Option<u64>,
     in_list: bool,
     after_code_block: bool,
     stack: Vec<Style>,
-    parser: pulldown_cmark::Parser<'a>,
+    parser: pulldown_cmark::Parser<'a, 'b>,
 }
 
-impl<'a> Parser<'a> {
+impl<'a> Parser<'a, '_> {
     /// Creates a new parser with the given input text.
     pub fn new(input: &'a str) -> Self {
         let mut opts = pulldown_cmark::Options::empty();
@@ -127,7 +127,7 @@ impl<'a> Parser<'a> {
     }
 }
 
-impl<'a> Iterator for Parser<'a> {
+impl<'a, 'b> Iterator for Parser<'a, 'b> {
     type Item = StyledIndexedSpan;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -141,10 +141,10 @@ impl<'a> Iterator for Parser<'a> {
                 // Add styles to the stack
                 Event::Start(tag) => match tag {
                     Tag::Emphasis => self.stack.push(Style::from(Effect::Italic)),
-                    Tag::Heading(level) if level == 1 => {
+                    Tag::Heading(HeadingLevel::H1, _, _) => {
                         self.stack.push(Style::from(PaletteColor::TitlePrimary))
                     }
-                    Tag::Heading(_) => self.stack.push(Style::from(PaletteColor::TitleSecondary)),
+                    Tag::Heading(..) => self.stack.push(Style::from(PaletteColor::TitleSecondary)),
                     // TODO style quote?
                     Tag::BlockQuote => return Some(self.literal("> ")),
                     Tag::Link(_, _, _) => return Some(self.literal("[")),
@@ -173,12 +173,12 @@ impl<'a> Iterator for Parser<'a> {
                 // Remove styles from stack
                 Event::End(tag) => match tag {
                     Tag::Paragraph => return Some(self.literal("\n\n")),
-                    Tag::Heading(_) => {
+                    Tag::Heading(..) => {
                         self.stack.pop().unwrap();
                         return Some(self.literal("\n\n"));
                     }
                     // TODO underline the link?
-                    Tag::Link(_, link, _) => return Some(self.literal(format!("]({})", link))),
+                    Tag::Link(_, link, _) => return Some(self.literal(format!("]({link})"))),
                     Tag::CodeBlock(_) => {
                         self.after_code_block = true;
                         self.stack.pop().unwrap();
@@ -236,7 +236,7 @@ Attention
 ====
 I *really* love __Cursive__!";
         let parsed = parse(input);
-        let spans: Vec<_> = parsed.spans().into_iter().collect();
+        let spans: Vec<_> = parsed.spans().collect();
         let expected_spans = &[
             Span {
                 content: "Attention",
@@ -296,7 +296,7 @@ code fences
 ```
 Obviously.";
         let parsed = parse(input);
-        let spans: Vec<_> = parsed.spans().into_iter().collect();
+        let spans: Vec<_> = parsed.spans().collect();
         let expected_spans = &[
             Span {
                 content: "project",
@@ -403,7 +403,7 @@ and tasks
 - [x] done!
 ";
         let parsed = parse(input);
-        let spans: Vec<_> = parsed.spans().into_iter().collect();
+        let spans: Vec<_> = parsed.spans().collect();
         let expected_spans = &[
             Span {
                 content: "1. ",
@@ -486,7 +486,7 @@ and tasks
         let input = "
 I'm on a Mac running OS&nbsp;X&nbsp;v10.6 (Snow&nbsp;Leopard). I have Mercurial 1.1 installed.\r\n\r\nAfter I hit <kbd>Esc</kbd> to exit insert mode I can't figure out how to save and quit. Hitting <kbd>Ctrl</kbd> + <kbd>C</kbd> shows me instructions that say typing \"quit<enter>\" will write and quit, but it doesn't seem to work.\r\n\r\n\r\n\r\n".to_string();
         let parsed = parse(preprocess(input));
-        let spans: Vec<_> = parsed.spans().into_iter().collect();
+        let spans: Vec<_> = parsed.spans().collect();
         let expected_spans = &[
             Span {
                 content: "I\'m on a Mac running OS",
@@ -617,7 +617,7 @@ I'm on a Mac running OS&nbsp;X&nbsp;v10.6 (Snow&nbsp;Leopard). I have Mercurial 
         let input =
             "1. Run the commands below, and compare the outputs\r\n\r\n\t\tsudo cat /etc/shadow";
         let parsed = parse(input);
-        let spans: Vec<_> = parsed.spans().into_iter().collect();
+        let spans: Vec<_> = parsed.spans().collect();
         let expected_spans = &[
             Span {
                 content: "1. ",

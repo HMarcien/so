@@ -1,3 +1,8 @@
+use std::fmt::Display;
+use std::rc::Rc;
+use std::time::Duration;
+use std::{fmt, thread};
+
 use cursive::event::{Callback, Event, EventResult, Key};
 use cursive::traits::{Finder, Nameable, Resizable, Scrollable};
 use cursive::utils::markup::StyledString;
@@ -6,10 +11,7 @@ use cursive::views::{
     HideableView, LinearLayout, NamedView, PaddedView, Panel, ResizedView, ScrollView, SelectView,
     TextView,
 };
-use cursive::{Cursive, Vec2, XY};
-use std::fmt;
-use std::fmt::Display;
-use std::rc::Rc;
+use cursive::{CbSink, Cursive, Vec2, XY};
 
 use super::markdown::Markdown;
 
@@ -18,6 +20,7 @@ pub const NAME_ANSWER_LIST: &str = "answer_list";
 pub const NAME_QUESTION_VIEW: &str = "question_view";
 pub const NAME_ANSWER_VIEW: &str = "answer_view";
 pub const NAME_FULL_LAYOUT: &str = "full_layout";
+pub const NAME_TEMP_MSG: &str = "tmp_msg_view";
 
 // TODO this seems pointless; probably should be removed
 pub enum Name {
@@ -140,7 +143,7 @@ impl ListView {
         }
         let view = view.with_name(&inner_name);
         let view = view.scrollable();
-        let view = Panel::new(view).title(format!("{}", name));
+        let view = Panel::new(view).title(format!("{name}"));
         let view = view.resized(SizeConstraint::Free, SizeConstraint::Free);
         let view = HideableView::new(view);
         let view = ListViewT {
@@ -150,6 +153,10 @@ impl ListView {
         };
 
         view.with_name(name)
+    }
+
+    pub fn get_current_selection(&mut self) -> Option<u32> {
+        self.call_on_inner(|sv| sv.selection().as_deref().copied())
     }
 
     pub fn reset_with_all<S, I>(&mut self, iter: I) -> Callback
@@ -262,7 +269,15 @@ impl MdView {
             .call_on_name(&self.inner_name, |tv: &mut TextView| {
                 tv.set_content(content.clone())
             })
-            .expect("unwrap failed in MdView.set_content")
+            .expect("couldn't find mdview")
+    }
+
+    pub fn get_content(&mut self) -> Markdown {
+        self.view
+            .call_on_name(&self.inner_name, |tv: &mut TextView| {
+                tv.get_content().clone()
+            })
+            .expect("couldn't find mdview")
     }
 
     pub fn show_title(&mut self) {
@@ -372,6 +387,39 @@ impl LayoutView {
         .with_name(NAME_FULL_LAYOUT)
     }
 
+    // Get the name of the currently focused pane
+    pub fn get_focused_name(&self) -> &'static str {
+        Self::xy_to_name(self.get_focused_index())
+    }
+
+    // Get the question or answer markdown content, whichever side is focused
+    pub fn get_focused_content(&mut self) -> Markdown {
+        let name = match self.get_focused_name() {
+            NAME_QUESTION_VIEW | NAME_QUESTION_LIST => NAME_QUESTION_VIEW,
+            _ => NAME_ANSWER_VIEW,
+        };
+        self.view
+            .call_on_name(name, |v: &mut MdView| v.get_content())
+            .expect("call on md view failed")
+    }
+
+    // There may be no questions and there may be no answers? There should be answers but w/e
+    pub fn get_focused_ids(&mut self) -> Option<(u32, Option<u32>)> {
+        let curr_question = self
+            .view
+            .call_on_name(NAME_QUESTION_LIST, |v: &mut ListView| {
+                v.get_current_selection()
+            })
+            .flatten()?;
+        let curr_answer = self
+            .view
+            .call_on_name(NAME_ANSWER_LIST, |v: &mut ListView| {
+                v.get_current_selection()
+            })
+            .flatten();
+        Some((curr_question, curr_answer))
+    }
+
     fn get_constraints(&self, screen_size: Vec2) -> LayoutViewSizing {
         let heuristic = 1;
         let width = SizeConstraint::Fixed(screen_size.x / 2 - heuristic);
@@ -438,7 +486,7 @@ impl LayoutView {
     }
 
     fn refocus(&mut self) {
-        let name = Self::xy_to_name(self.get_focused_index());
+        let name = self.get_focused_name();
         match self.layout {
             Layout::SingleColumn if name == NAME_QUESTION_LIST || name == NAME_QUESTION_VIEW => {
                 self.view
@@ -618,3 +666,35 @@ pub trait Vimable: View + Sized {
 }
 
 impl<T: View> Vimable for T {}
+
+pub struct TempView<T: View> {
+    view: T,
+}
+
+impl<T: View> ViewWrapper for TempView<T> {
+    cursive::wrap_impl!(self.view: T);
+
+    fn wrap_on_event(&mut self, _event: Event) -> EventResult {
+        // close this view on any input
+        EventResult::with_cb(|s| {
+            s.pop_layer();
+        })
+    }
+}
+
+impl<V: View> TempView<NamedView<V>> {
+    pub fn new(inner: V, cb_sink: CbSink) -> Self {
+        thread::spawn(move || {
+            thread::sleep(Duration::from_secs(2));
+            cb_sink
+                .send(Box::new(|s| {
+                    if let Some(pos) = s.screen_mut().find_layer_from_name(NAME_TEMP_MSG) {
+                        s.screen_mut().remove_layer(pos);
+                    }
+                }))
+                .expect("failed to send fn to cursive cb sink");
+        });
+        let view = inner.with_name(NAME_TEMP_MSG);
+        Self { view }
+    }
+}

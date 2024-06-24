@@ -1,4 +1,5 @@
-use crossterm::event::{read, Event, KeyCode, KeyEvent};
+use anyhow::Context;
+use crossterm::event::{read, Event, KeyEvent};
 use crossterm::style::{Color, Print};
 use crossterm::terminal::ClearType;
 use crossterm::{cursor, execute, terminal};
@@ -83,26 +84,21 @@ impl Term {
         Ok(())
     }
 
-    /// Blocks and waits for the user to press any key. Returns whether or not that key is the
-    /// character key `c`.
-    pub fn wait_for_char(c: char) -> Result<bool> {
-        let mut pressed = false;
-        terminal::enable_raw_mode()?;
-        loop {
-            match read()? {
-                Event::Key(KeyEvent {
-                    code: KeyCode::Char(ch),
-                    ..
-                }) if ch == c => {
-                    pressed = true;
-                    break;
+    /// Waits for the user to press any key and returns it
+    pub async fn wait_for_key() -> Result<KeyEvent> {
+        let res = tokio::task::spawn_blocking(move || {
+            terminal::enable_raw_mode().unwrap();
+            let k = loop {
+                if let Event::Key(k) = read().unwrap() {
+                    break k;
                 }
-                Event::Key(_) => break,
-                _ => (),
-            }
-        }
-        terminal::disable_raw_mode()?;
-        Ok(pressed)
+            };
+            terminal::disable_raw_mode().unwrap();
+            k
+        })
+        .await
+        .context("failed to get key event")?;
+        Ok(res)
     }
 
     /// As it sounds, takes a future and shows a CLI spinner until it's output is ready
@@ -153,7 +149,7 @@ impl Spinner {
         while let Err(TryRecvError::Empty) = rx.try_recv() {
             execute!(
                 stderr(),
-                cursor::MoveToColumn(0),
+                cursor::MoveToColumn(1),
                 terminal::Clear(ClearType::CurrentLine),
                 Print(dots.next().unwrap())
             )?;
